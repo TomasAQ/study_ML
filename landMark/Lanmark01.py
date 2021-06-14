@@ -7,8 +7,13 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import argparse
 import torch
 
+# 파일 CRUD 라이브러리
+# https://wikidocs.net/83
 from glob import glob
+# 이미지 불러오는 라이브러리
+# https://ddolcat.tistory.com/690
 from PIL import Image
+# 진행바를 표시해주는 라이브러리
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 from torch import nn, optim
@@ -18,6 +23,10 @@ import torch.nn.functional as F
 # arguments
 # train_csv_exist, test_csv_exist는 glob.glob이 생각보다 시간을 많이 잡아먹어서 iteration 시간을 줄이기 위해 생성되는 파일입니다.
 # 이미 생성되어 있을 경우 train_csv_exist.csv 파일로 Dataset을 생성합니다.
+'''
+모델 학습에 필요한 정보를 한번에 넘겨주는 부분
+학습 데이터 위치 , 라벨데이터 위치 , 이미지 사이즈 , epochs수 , batch_size 등등
+'''
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--train_dir', dest='train_dir', default="./public/train/")
@@ -42,12 +51,21 @@ parser.add_argument('--load_epoch', dest='load_epoch', type=int, default=29)
 
 args = parser.parse_args()
 
+
 # 경로 생성
 if not os.path.isdir(args.model_dir) :
+    # 새로운 폴더 생성
     os.makedirs(args.model_dir)
+
 
 # 파이토치 Dataset 생성 for Train / Test
 class TrainDataset(Dataset) :
+    '''
+    초기 세팅으로
+    학습데이터 위치
+    학습데이터 라벨 위치
+    결과 라벨 생성될 위치
+    '''
     def __init__(self, args) :
         self.train_dir = args.train_dir
         self.train_csv_dir = args.train_csv_dir
@@ -55,14 +73,20 @@ class TrainDataset(Dataset) :
         self.args = args
         self.train_image = list()
         self.train_label = list()
+        '''
+        결과 csv가 존재하지 않으면
+        기존 라벨데이터로 새로 만들기
+        '''
         if not os.path.isfile(self.train_csv_exist_dir) :
             self.train_csv = pd.read_csv(self.train_csv_dir)
             self.train_csv_exist = self.train_csv.copy()
+            # 전처리된 .csv 파일을 만들어준다.
             self.load_full_data()
             self.train_csv_exist.to_csv(self.train_csv_exist_dir, index=False)
         else :
+            # 기존 .csv 파일 사용
             self.load_exist_data()
-
+    # 전체 데이터 호출
     def load_full_data(self) :
         for i in tqdm(range(len(self.train_csv))) :
             filename = self.train_csv['id'][i]
@@ -85,14 +109,17 @@ class TrainDataset(Dataset) :
     def __len__(self) :
         return len(self.train_image)
 
+    # 이미지 사이즈 조절 -> 축변경 -> 
     def __getitem__(self, idx) :
         image = Image.open(self.train_image[idx])
         image = image.resize((self.args.image_size, self.args.image_size))
         image = np.array(image) / 255.
+        # Pytorch Conv2d 에서 사용하기 위해서 축변경
         image = np.transpose(image, axes=(2, 0, 1))
         label = self.train_label[idx]
 
         return {'image' : image, 'label' :label}
+
 
 class TestDataset(Dataset) :
     def __init__(self, args) :
@@ -235,3 +262,5 @@ else :
         submission.loc[iter, 'landmark_id'] = landmark_id
         submission.loc[iter, 'conf'] = confidence
     submission.to_csv(args.test_csv_submission_dir, index=False)
+
+
